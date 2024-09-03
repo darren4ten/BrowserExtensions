@@ -1,0 +1,276 @@
+// ==UserScript==
+// @name         JST订单分析助手(Gem)
+// @namespace    http://tampermonkey.net/
+// @version      0.1
+// @description  在特定页面显示圆圈，点击显示编辑框
+// @match        *://*.jushuitan.com/epaas*
+// @match        *://*.jushuitan.com/*
+// @match        *://erp321.com/epaas*
+// @match        https://w.erp321.com/*
+// @grant        none
+// @run-at       document-end
+// @author      darren
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // 判断当前页面类型
+    function isOrderDetailPage() {
+        return window.location.href.indexOf('app/order/order/OrderEditorNew.aspx') !== -1;
+    }
+
+    function isOrderListPage() {
+        return window.location.href.indexOf('app/order/order/list.aspx') !== -1;
+    }
+
+    function isOrderToolPage(){
+        return window.location.href.indexOf('admin/internal/ops/OrderAnalysisOps.aspx') !== -1;
+    }
+
+    // 创建圆圈元素
+    function createCircle() {
+        const circle = document.createElement('div');
+        circle.style.position = 'fixed';
+        circle.id = 'k_circle_231';
+        circle.textContent = 'JST';
+        circle.style.top = '80px';
+        circle.style.right = '34px';
+        circle.style.width = '60px';
+        circle.style.height = '60px';
+        circle.style.lineHeight = '60px';
+        circle.style.fontSize = '14px';
+        circle.style.textAlign = 'center';
+        circle.style.color = '#ffbc00';
+        circle.style.borderRadius = '50%';
+        circle.style.backgroundColor = 'green';
+        circle.style.draggable="false";
+        circle.style.zIndex = 9999;
+        circle.draggable = true;
+        document.body.appendChild(circle);
+
+        circle.addEventListener('click', () => {
+            showEditBox();
+        });
+        let isDragging = false;
+        let offsetX, offsetY;
+        circle.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            offsetX = e.clientX - circle.offsetLeft;
+            offsetY = e.clientY - circle.offsetTop;
+            // circle.textContent='start..'
+            e.preventDefault(); // Prevent default drag behavior
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                circle.style.left = e.clientX - offsetX + 'px';
+                circle.style.top = e.clientY - offsetY + 'px';
+                // circle.textContent='moving'
+            }
+        });
+        circle.addEventListener('mouseup', () => {
+            isDragging = false;
+            // circle.textContent='stop..'
+        });
+        return circle;
+    }
+
+
+    // 创建编辑框
+    function createEditBox() {
+        const editBox = document.createElement('div');
+        editBox.id = 'k_editbox_231';
+        editBox.style.position = 'fixed';
+        editBox.style.top = '50%';
+        editBox.style.right = '20px';
+        editBox.style.transform = 'translate(-50%, -50%)';
+        editBox.style.width = '600px';
+        editBox.style.height = '500px';
+        editBox.style.backgroundColor = '#fff';
+        editBox.style.border = '1px solid #ccc';
+        editBox.style.padding = '20px';
+        editBox.style.zIndex = 99999;
+
+        const title = document.createElement('div');
+        title.textContent = 'OrderData内容';
+        title.style.position = 'fixed';
+        title.style.top = '0';
+        title.style.left = '0';
+        title.style.width = '100%';
+        title.style.height = '30px';
+        title.style.lineHeight = '30px';
+        title.style.paddingLeft = '8px';
+        title.style.backgroundColor = '#f0f0f0';
+        title.style.cursor = 'move';
+        editBox.appendChild(title);
+
+        const content = document.createElement('div');
+        content.style.height = 'calc(100% - 30px)';
+        content.style.overflowY = 'auto';
+        content.style.margin = '20px 2px';
+        editBox.appendChild(content);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'X';
+        closeBtn.style.position = 'fixed';
+        closeBtn.style.border = '0px solid gray';
+        closeBtn.style.top = '4px';
+        closeBtn.style.right = '10px';
+        closeBtn.style.zIndex = 999999;
+        editBox.appendChild(closeBtn);
+
+        document.body.appendChild(editBox);
+        // 使标题栏可拖动
+        let isDragging = false;
+        let offsetX, offsetY;
+        title.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            offsetX = e.clientX - editBox.offsetLeft;
+            offsetY = e.clientY - editBox.offsetTop;
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                editBox.style.left = e.clientX - offsetX + 'px';
+                editBox.style.top = e.clientY - offsetY + 'px';
+            }
+        });
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // 关闭按钮点击事件
+        closeBtn.addEventListener('click', () => {
+            editBox.remove();
+        });
+
+        //复制按钮
+        const copyButton = document.createElement('button');
+        copyButton.textContent = '复制';
+        copyButton.style.position = 'absolute';
+        copyButton.style.top = '40px';
+        copyButton.style.color = 'green';
+        copyButton.style.right = '60px';
+        editBox.appendChild(copyButton);
+        copyButton.addEventListener('click', () => {
+            const dataToCopy = JSON.stringify(getJsonData(), null, 4); // 格式化JSON字符串
+            navigator.clipboard.writeText(dataToCopy)
+                .then(() => {
+                alert('复制成功！');
+            })
+                .catch(err => {
+                console.error('复制失败：', err);
+            });
+        });
+
+        // 显示美化后的数据
+        var data=getJsonData();
+        if (data) {
+            // content.textContent = JSON.stringify(_OrderData, null, 4);
+            console.log('--loadCodeMirror--');
+            loadCodeMirror(content,data);
+        } else {
+            content.textContent = '没有选中的数据';
+        }
+
+        // 创建底部固定栏
+        const bottomBar = document.createElement('div');
+        bottomBar.style.position = 'fixed';
+        bottomBar.style.bottom = '0';
+        bottomBar.style.left = '0';
+        bottomBar.style.width = '100%';
+        bottomBar.style.height = '32px';
+        bottomBar.style.backgroundColor = '#f0f0f0'; // 设置背景色，可自定义
+        editBox.appendChild(bottomBar);
+        if(isOrderDetailPage()){
+            // 创建按钮
+            const saveLogButton = document.createElement('button');
+            saveLogButton.textContent = '订单保存日志';
+            saveLogButton.style.position = 'absolute';
+            saveLogButton.style.right = '20px'; // 调整按钮位置
+            saveLogButton.style.top = '50%';
+            saveLogButton.style.transform = 'translateY(-50%)';
+            saveLogButton.addEventListener('click', () => {
+                window.open(`https://w.erp321.com/admin/internal/ops/OrderAnalysisOps.aspx?fromBrowersExt=1&_ext_shopid=${data.shop_id}&_ext_soid=${data.so_id}&_ext_start=&_ext_end=`);
+            });
+            // 将按钮添加到底部固定栏
+            bottomBar.appendChild(saveLogButton);
+        }
+    }
+    function getJsonData(){
+        if(isOrderDetailPage()){
+            return _OrderData;
+        }else if(isOrderListPage()){
+            return jTable.GetCheckedJRows().map(p=>p.Data);
+        }
+        return null;
+    }
+
+    function loadCodeMirror(container,dataObj){
+        // 引入CodeMirror的CSS
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        // link.href = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.css';
+        // link.href = 'https://cdn.bootcdn.net/ajax/libs/jquery-jsonview/1.2.3/jquery.jsonview.css';
+        link.href = 'https://abodelot.github.io/jquery.json-viewer/json-viewer/jquery.json-viewer.css';
+        document.head.appendChild(link);
+
+        // 引入CodeMirror的JS
+        var script = document.createElement('script');
+        // script.src = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.js';
+        // script.src = 'https://cdn.bootcdn.net/ajax/libs/jquery-jsonview/1.2.3/jquery.jsonview.js';
+        script.src = 'https://abodelot.github.io/jquery.json-viewer/json-viewer/jquery.json-viewer.js';
+        document.head.appendChild(script);
+
+        // 等待CodeMirror加载完成
+        script.onload = function() {
+            // // 创建CodeMirror实例
+            // const codeMirror = CodeMirror(container, {
+            //     value: JSON.stringify(dataObj, null, 4),
+            //     mode: 'javascript',
+            //     lineNumbers: true,
+            //     theme: 'monokai',
+            //     gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+            //     foldGutter: true,
+            //     readOnly: true
+            // });
+            $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
+        };
+    }
+
+    // 显示编辑框
+    function showEditBox() {
+        if (!document.querySelector('.edit-box') && !document.getElementById('k_editbox_231')) {
+            createEditBox();
+        }
+    }
+
+    function getParameterByName(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+    }
+    //自动加载订单工具参数并查询
+    function autoSearchOrderTool(){
+        console.log('autoSearchOrderTool start...');
+        var fromBrowersExt=getParameterByName('fromBrowersExt');
+        if(!fromBrowersExt){
+            return;
+        }
+        console.log('autoSearchOrderTool executed...');
+        var soId=getParameterByName('_ext_soid');
+        var start=getParameterByName('_ext_start');
+        var end=getParameterByName('_ext_end');
+        var shopId=parseInt(getParameterByName('_ext_shopid'));
+        if(!isNaN(shopId)){
+            vm.$data.oQueryForm.iShopId=shopId;
+        }
+        vm.$data.oQueryForm.sOrderId=soId;
+        vm.fnQuery();
+    }
+    console.log('JST tool ...');
+    if (isOrderDetailPage() || isOrderListPage()) {
+        createCircle();
+    }else if(isOrderToolPage()){
+        autoSearchOrderTool();
+    }
+
+})();
