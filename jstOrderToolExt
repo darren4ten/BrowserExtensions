@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         JST订单分析助手(Gem)
+// @name         JST订单分析助手1.0
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  在特定页面显示圆圈，点击显示编辑框
