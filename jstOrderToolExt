@@ -292,7 +292,7 @@
         }
         _CallPage("AdminLogin", null, parseInt(coId), null);
         setTimeout(()=>{
-            if($("#msg_body").length>0){
+            if($('#msg_body').is(':visible')){
                 return;
             }
             window.close();
