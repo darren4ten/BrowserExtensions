@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         JST订单分析助手1.0
+// @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  在特定页面显示圆圈，点击显示编辑框
+// @version      0.2
+// @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
 // @match        *://erp321.com/epaas*
@@ -26,6 +26,18 @@
 
     function isOrderToolPage(){
         return window.location.href.indexOf('admin/internal/ops/OrderAnalysisOps.aspx') !== -1;
+    }
+
+    function isTicketPage(){
+        return window.location.href.indexOf('tool.jushuitan.com/ticket') !== -1;
+    }
+    //是搜索公司进行代理的页面
+    function isPorxyCompanyPage(){
+        return window.location.href.indexOf('app/user/company/company.aspx') !== -1;
+    }
+
+    function canEnableJumptoProxyCompany(){
+        return isTicketPage();
     }
 
     // 创建圆圈元素
@@ -266,11 +278,115 @@
         vm.$data.oQueryForm.sOrderId=soId;
         vm.fnQuery();
     }
+
+    function navToProxyCompany(){
+        if(!getParameterByName("fromBrowersExt")){
+            return;
+        }
+        var coId=getParameterByName('_ext_coid');
+        if(isNaN(coId)){
+            return;
+        }
+        if($('.error-title').length>0){
+            return;
+        }
+        _CallPage("AdminLogin", null, parseInt(coId), null);
+        setTimeout(()=>{
+            if($("#msg_body").length>0){
+                return;
+            }
+            window.close();
+        },600);
+    }
+
+    function matchContextConditon(selectedText){
+        var maybeCoId=false;
+        var maybeSoId=false;
+        if(selectedText.length>32 || selectedText.length<5){
+            return {maybeCoId,maybeSoId};
+        }
+        if(isNaN(selectedText) || selectedText.length>11){
+            maybeSoId=true;
+        }
+        if(!isNaN(selectedText)){
+            maybeCoId=true;
+            maybeSoId=true;
+        }
+        return {maybeCoId,maybeSoId};
+    }
+
+    function buildContextLi(desc,text,onClick){
+        let li = document.createElement('li');
+        li.id='_nav_ordertool';
+        let btn=document.createElement('button');
+        btn.innerHTML=`<span style=''>${desc}(</span><span style="color:green">${text}</span><span>)</span>`;
+        btn.addEventListener('click', function(event) {
+            onClick && onClick(text,event);
+        });
+        li.appendChild(btn);
+        return li;
+    }
+    function buildContextMenu(selectedText){
+        selectedText=selectedText.trim();
+        var conditon= matchContextConditon(selectedText);
+        if(!conditon.maybeCoId&& !conditon.maybeSoId){
+            return null;
+        }
+        var div = document.createElement('div');
+        div.style.position = 'absolute';
+        div.style.zIndex = '9999';
+        div.style.top = event.clientY - 60 + 'px';
+        div.style.left = event.clientX - 180 + 'px';
+        var ul = document.createElement('ul');
+        if(conditon.maybeCoId){
+            let li= buildContextLi('代理登录',selectedText,(txt)=>{
+                window.open('https://w.erp321.com/app/user/company/company.aspx?_c=jst-epaas&fromBrowersExt=1&_ext_coid=' + txt);
+            });
+            ul.appendChild(li);
+        }
+        if(conditon.maybeSoId){
+            let li= buildContextLi('SoId订单报文',selectedText,(txt)=>{
+                window.open(`https://w.erp321.com/admin/internal/ops/OrderAnalysisOps.aspx?fromBrowersExt=1&_ext_soid=${txt}&_ext_start=&_ext_end=`);
+            });
+            ul.appendChild(li);
+        }
+        div.appendChild(ul);
+        return div;
+    }
+
+    function enableJumptoProxyPage(){
+        let div; // 用于存储创建的按钮
+        document.addEventListener('mouseup', function(event) {
+            const selectedText = window.getSelection().toString().trim();
+            if(!div){
+                div=buildContextMenu(selectedText);
+                if(div){
+                    document.body.appendChild(div);
+                }
+            }else{
+                var conditon= matchContextConditon(selectedText);
+                if(!conditon.maybeCoId&& !conditon.maybeSoId && div){
+                    document.body.removeChild(div);
+                    div=null;
+                }else{
+                    div.style.top = event.clientY - 20 + 'px';
+                    div.style.left = event.clientX + 10 + 'px';
+                }
+            }
+        });
+    }
+
+
+
     console.log('JST tool ...');
     if (isOrderDetailPage() || isOrderListPage()) {
         createCircle();
     }else if(isOrderToolPage()){
         autoSearchOrderTool();
+    }else if(canEnableJumptoProxyCompany()){
+        enableJumptoProxyPage();
+    }else if(isPorxyCompanyPage()){
+        navToProxyCompany();
     }
 
 })();
