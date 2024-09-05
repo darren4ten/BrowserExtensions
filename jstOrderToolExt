@@ -213,7 +213,7 @@
             return _OrderData;
         }else if(isOrderListPage()){
             var checkdedData= jTable.GetCheckedJRows().map(p=>p.Data);
-            if(checkdedData){
+            if(checkdedData && checkdedData.length>0){
                 return checkdedData;
             }
             if(jTable.Rows.length<=3){
