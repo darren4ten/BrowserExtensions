@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
@@ -9,7 +9,7 @@
 // @match        https://w.erp321.com/*
 // @grant        none
 // @run-at       document-end
-// @author      darren
+// @author      darren/炬木
 // ==/UserScript==
 
 (function() {
@@ -212,7 +212,13 @@
         if(isOrderDetailPage()){
             return _OrderData;
         }else if(isOrderListPage()){
-            return jTable.GetCheckedJRows().map(p=>p.Data);
+            var checkdedData= jTable.GetCheckedJRows().map(p=>p.Data);
+            if(checkdedData){
+                return checkdedData;
+            }
+            if(jTable.Rows.length<=3){
+                return jTable.Rows.map(p=>p.Data);
+            }
         }
         return null;
     }
