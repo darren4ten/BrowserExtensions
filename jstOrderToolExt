@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
@@ -12,11 +12,16 @@
 // @author      darren/炬木
 // ==/UserScript==
 /**
-在DBMS页面会有提示功能
---JST订单助手插件提示：
---1.输入sto然后按Tab键将自动补充为：SELECT TOP(100) * from   ORDER BY 1 DESC，如果输入stoo则会补充当前公司id的条件;
---2.Ctrl+K：注释或者反注释当前鼠标所在行
---3.Ctrl+鼠标单击：选中鼠标所在行
+功能点：
+1. 在DBMS页面会有提示功能
+    --JST订单助手插件提示：
+    --1.输入sto然后按Tab键将自动补充为：SELECT TOP(100) * from   ORDER BY 1 DESC，如果输入stoo则会补充当前公司id的条件;
+    --2.Ctrl+K：注释或者反注释当前鼠标所在行
+    --3.Ctrl+鼠标单击：选中鼠标所在行的SQL语句（自动识别多行的SQL语句）
+2. 订单详情页会显示小圆圈，点击圆圈会弹出悬浮窗折叠显示订单的_OrderData,并支持复制和跳转到订单保存日志页面
+3. 订单列表页会显示小圆圈，如果查询结果小于等于3则点击圆圈会显示列表上所有的行的json数据, 否则点击圆圈只会显示选中的数据记录。
+4. 工单页面，选中文字会自动识别，如果识别的是纯数字，会在选中文字的左上角显示两个按钮：代理登录（选中的数字）（点击会自动代理登录该公司），SoId订单报文（选中的数字）；
+    如果识别的不是数字且长度小于32则会提示SoId订单报文（选中的文本），点击会跳转到订单报文页面并查询当前选中文本的日志。
 **/
 (function() {
     'use strict';
@@ -252,16 +257,6 @@
 
         // 等待CodeMirror加载完成
         script.onload = function() {
-            // // 创建CodeMirror实例
-            // const codeMirror = CodeMirror(container, {
-            //     value: JSON.stringify(dataObj, null, 4),
-            //     mode: 'javascript',
-            //     lineNumbers: true,
-            //     theme: 'monokai',
-            //     gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
-            //     foldGutter: true,
-            //     readOnly: true
-            // });
             $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
         };
     }
@@ -286,7 +281,7 @@
 --1.输入sto然后按Tab键将自动补充为：SELECT TOP(100) * from   ORDER BY 1 DESC，如果输入stoo则会补充当前公司id的条件;
 --2.Ctrl+K：注释或者反注释当前鼠标所在行
 --3.Ctrl+鼠标单击：选中鼠标所在行
-        `;
+@`;
         // 获取当前光标位置
         const cursor = cm.getCursor();
         const firstLine = cm.getLine(0);
@@ -308,18 +303,30 @@
 
         if (match) {
             const coId = match[1];
-            const extId = match[2].slice(-2);
+            let extId = match[2].slice(-2);
             if(isNaN(coId) || isNaN(extId)){
                 return null;
             }
             console.log(`co_id: ${coId}, extId: ${extId}`);
+            extId=parseInt(extId);
             return {coId,extId};
         }
         return null;
     }
 
+    // 检查行内容是否为空
+    function isEmptyLine(line) {
+        return !line.trim();
+    }
+
+    // 检查行内容是否包含分号或 "go"
+    function containsSemicolonOrGo(line) {
+        return line.includes(';') || line.toLowerCase().includes('go');
+    }
+
+    //Ctrl+鼠标左键 选中当前的查询语句
     function handleCtrlClickToSelectRows(cm, e) {
-        if (!e.ctrlKey) return;  // Only proceed if Ctrl is pressed
+        if (!e.ctrlKey) return;// Only proceed if Ctrl is pressed
 
         const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
         const cursor = cm.getCursor(pos);
@@ -347,12 +354,11 @@
             }
         }
 
-        // Find contiguous non-empty lines below (if not containing semicolon or 'go')
         if (!hasSemicolonOrGo) {
             while (endLine < cm.lineCount() - 1) {
                 const nextLineText = cm.getLine(endLine + 1).trim();
+                endLine++;
                 if (isValidLine(nextLineText)) {
-                    endLine++;
                 } else {
                     break;
                 }
@@ -423,26 +429,44 @@
     }
 
     //DBMS页面代码快捷键
+    //     function waitForCodeMirror() {
+    //         const observer = new MutationObserver(() => {
+    //             // 等待 CodeMirror 实例可用
+    //             // 查找所有 CodeMirror 实例
+    //             const editor= document.querySelector('.CodeMirror');
+    //             const cm =editor? editor.CodeMirror:null; // 获取 CodeMirror 实例
+    //             if (!cm) return;
+    //             cm.focus();
+    //             var contextInfo=getContextInfo(cm);
+    //             addTextToCodeMirror(cm);
+    //             enhanceCodeMirror(cm,contextInfo);
+    //             // 停止观察
+    //             observer.disconnect();
+    //         });
+
+    //         // 开始观察整个文档
+    //         observer.observe(document.body, { childList: true, subtree: true });
+    //     }
     function waitForCodeMirror() {
-        const observer = new MutationObserver(() => {
-            // 等待 CodeMirror 实例可用
-            // 查找所有 CodeMirror 实例
-            const editor= document.querySelector('.CodeMirror');
-            const cm =editor? editor.CodeMirror:null; // 获取 CodeMirror 实例
-            if (!cm) return;
-            cm.focus();
-            var contextInfo=getContextInfo(cm);
-            addTextToCodeMirror(cm);
-            enhanceCodeMirror(cm,contextInfo);
-            // 停止观察
-            observer.disconnect();
-        });
+        let checkCount=0;
+        const checkCodeMirror = () => {
+            checkCount++;
+            const editor = document.querySelector('.CodeMirror');
+            const cm = editor ? editor.CodeMirror : null;
+            if (cm) {
+                cm.focus();
+                var contextInfo = getContextInfo(cm);
+                addTextToCodeMirror(cm);
+                enhanceCodeMirror(cm, contextInfo);
+                clearInterval(intervalId); // 找到 CodeMirror 实例后停止轮询
+            }
+            if(checkCount>150){
+                clearInterval(intervalId); //如果超过次数也停止轮寻
+            }
+        };
 
-        // 开始观察整个文档
-        observer.observe(document.body, { childList: true, subtree: true });
+        const intervalId = setInterval(checkCodeMirror, 100); // 每100毫秒检查一次
     }
-
-
     //#endregion ---------------------DBMS相关操作
 
     //自动加载订单工具参数并查询
