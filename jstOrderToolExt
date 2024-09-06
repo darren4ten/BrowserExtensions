@@ -193,7 +193,7 @@
         var data=getJsonData();
         if (data) {
             // content.textContent = JSON.stringify(_OrderData, null, 4);
-            console.log('--loadJsonViewer--');
+            // console.log('--loadJsonViewer--');
             loadJsonViewer(content,data);
         } else {
             content.textContent = '没有选中的数据';
@@ -253,26 +253,26 @@
         style.textContent = '.json-document{padding:1em 2em}ul.json-dict,ol.json-array{list-style-type:none;margin:0 0 0 1px;border-left:1px dotted #ccc;padding-left:2em}.json-string{color:#0B7500}.json-literal{color:#1A01CC;font-weight:bold}a.json-toggle{position:relative;color:inherit;text-decoration:none}a.json-toggle:focus{outline:none}a.json-toggle:before{font-size:1.1em;color:#c0c0c0;content:"\u25BC";position:absolute;display:inline-block;width:1em;text-align:center;line-height:1em;left:-1.2em}a.json-toggle:hover:before{color:#aaa}a.json-toggle.collapsed:before{transform:rotate(-90deg)}a.json-placeholder{color:#aaa;padding:0 1em;text-decoration:none}a.json-placeholder:hover{text-decoration:underline}';
         // 将 <style> 元素添加到 <head> 中
         document.head.appendChild(style);
+        // console.log('动态添加preLoadJsonPrettyPlugin');
     }
 
+    let isJsonViewerPluginLoaded=false;
     function loadJsonViewer(container,dataObj){
-        if(true){
+        if(!isJsonViewerPluginLoaded){
             preLoadJsonPrettyPlugin();
+            isJsonViewerPluginLoaded=true;
             setTimeout(()=>{
                 $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
             },100);
         }
+        return;
         var link = document.createElement('link');
         link.rel = 'stylesheet';
-        // link.href = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.css';
-        // link.href = 'https://cdn.bootcdn.net/ajax/libs/jquery-jsonview/1.2.3/jquery.jsonview.css';
         link.href = 'https://abodelot.github.io/jquery.json-viewer/json-viewer/jquery.json-viewer.css';
         document.head.appendChild(link);
 
         // 引入CodeMirror的JS
         var script = document.createElement('script');
-        // script.src = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.js';
-        // script.src = 'https://cdn.bootcdn.net/ajax/libs/jquery-jsonview/1.2.3/jquery.jsonview.js';
         script.src = 'https://abodelot.github.io/jquery.json-viewer/json-viewer/jquery.json-viewer.js';
         document.head.appendChild(script);
 
