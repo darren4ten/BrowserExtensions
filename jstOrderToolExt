@@ -264,6 +264,8 @@
             setTimeout(()=>{
                 $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
             },100);
+        }else{
+            $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
         }
         return;
         var link = document.createElement('link');
