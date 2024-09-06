@@ -535,7 +535,7 @@
         if(selectedText.length>32 || selectedText.length<5){
             return {maybeCoId,maybeSoId};
         }
-        if(isNaN(selectedText) || selectedText.length>11){
+        if((isNaN(selectedText) || selectedText.length>11)&& selectedText.indexOf(' ')<=0 && selectedText.indexOf('\t')<=0){
             maybeSoId=true;
         }
         if(!isNaN(selectedText)){
