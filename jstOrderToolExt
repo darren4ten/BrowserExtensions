@@ -11,7 +11,13 @@
 // @run-at       document-end
 // @author      darren/炬木
 // ==/UserScript==
-
+/**
+在DBMS页面会有提示功能
+--JST订单助手插件提示：
+--1.输入sto然后按Tab键将自动补充为：SELECT TOP(100) * from   ORDER BY 1 DESC，如果输入stoo则会补充当前公司id的条件;
+--2.Ctrl+K：注释或者反注释当前鼠标所在行
+--3.Ctrl+鼠标单击：选中鼠标所在行
+**/
 (function() {
     'use strict';
 
@@ -34,6 +40,10 @@
     //是搜索公司进行代理的页面
     function isPorxyCompanyPage(){
         return window.location.href.indexOf('app/user/company/company.aspx') !== -1;
+    }
+
+    function isDBMSQueryPage(){
+        return window.location.href.indexOf('DBEngine/Query?') !== -1;
     }
 
     function canEnableJumptoProxyCompany(){
@@ -208,6 +218,7 @@
             bottomBar.appendChild(saveLogButton);
         }
     }
+
     function getJsonData(){
         if(isOrderDetailPage()){
             return _OrderData;
@@ -266,6 +277,174 @@
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get(name);
     }
+
+
+    //#region ---------------------DBMS相关操作
+
+    function addTextToCodeMirror(cm) {
+        var tip=`--JST订单助手插件提示：
+--1.输入sto然后按Tab键将自动补充为：SELECT TOP(100) * from   ORDER BY 1 DESC，如果输入stoo则会补充当前公司id的条件;
+--2.Ctrl+K：注释或者反注释当前鼠标所在行
+--3.Ctrl+鼠标单击：选中鼠标所在行
+        `;
+        // 获取当前光标位置
+        const cursor = cm.getCursor();
+        const firstLine = cm.getLine(0);
+        if(firstLine && firstLine.indexOf('JST订单助手')>-1){
+            return;
+        }
+        // 在编辑框的开头插入文本
+        cm.replaceRange(tip, { line: 0, ch: 0 });
+        // 重新设置光标位置（可选）
+        cm.setCursor({ line: cursor.line, ch: cursor.ch + tip.length });
+    }
+
+    function getContextInfo(cm){
+        // 获取 CodeMirror 的所有文本
+        const content = cm.getValue();
+        // 正则表达式匹配目标文本
+        const regex = /-- 公司编号：(\d+) 公司名称：[^ ]+ 分表：(\d{5,})  where co_id = \1/;
+        const match = content.match(regex);
+
+        if (match) {
+            const coId = match[1];
+            const extId = match[2].slice(-2);
+            if(isNaN(coId) || isNaN(extId)){
+                return null;
+            }
+            console.log(`co_id: ${coId}, extId: ${extId}`);
+            return {coId,extId};
+        }
+        return null;
+    }
+
+    function handleCtrlClickToSelectRows(cm, e) {
+        if (!e.ctrlKey) return;  // Only proceed if Ctrl is pressed
+
+        const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
+        const cursor = cm.getCursor(pos);
+        const line = cursor.line;
+        const lineText = cm.getLine(line).trim();
+
+        if (lineText === '') return;  // Do nothing if the line is empty
+
+        const hasSemicolonOrGo = lineText.includes(';') || lineText.toLowerCase().includes('go');
+        let startLine = line;
+        let endLine = line;
+
+        // Function to check if a line is non-empty and doesn't contain semicolon or 'go'
+        function isValidLine(txt) {
+            return txt.trim() !== '' && !txt.includes(';') && !txt.toLowerCase().includes('go');
+        }
+
+        // Find contiguous non-empty lines above
+        while (startLine > 0) {
+            const prevLineText = cm.getLine(startLine - 1).trim();
+            if (isValidLine(prevLineText)) {
+                startLine--;
+            } else {
+                break;
+            }
+        }
+
+        // Find contiguous non-empty lines below (if not containing semicolon or 'go')
+        if (!hasSemicolonOrGo) {
+            while (endLine < cm.lineCount() - 1) {
+                const nextLineText = cm.getLine(endLine + 1).trim();
+                if (isValidLine(nextLineText)) {
+                    endLine++;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Select the range of lines
+        cm.setSelection({ line: startLine, ch: 0 }, { line: endLine, ch: cm.getLine(endLine).length });
+    }
+
+    // 自定义功能实现
+    function enhanceCodeMirror(cm,context) {
+        // 自动补全功能
+        cm.addKeyMap({
+            'Tab': function(cm) {
+                const cursor = cm.getCursor();
+                const line = cursor.line;
+                const ch = cursor.ch;
+
+                // Get the current line's text
+                const currentLineText = cm.getLine(line);
+                var stoFunc=()=>{
+                    cm.replaceRange('SELECT TOP(100) * FROM  ORDER BY 1 DESC;', { line, ch: 0 }, { line, ch: currentLineText.length });
+                    const newCursorPosition = { line, ch: 'SELECT TOP(100) * FROM '.length };
+                    cm.setCursor(newCursorPosition);
+                };
+                // Check if the current line text is 'sto'
+                if (currentLineText.trim() === 'sto') {
+                    stoFunc();
+                } else if (currentLineText.trim() === 'stoo') {
+                    if(context){
+                        cm.replaceRange(`SELECT TOP(100) * FROM _${context.extId} WHERE co_id=${context.coId}  ORDER BY 1 DESC;`, { line, ch: 0 }, { line, ch: currentLineText.length });
+                        const newCursorPosition = { line, ch: 'SELECT TOP(100) * FROM '.length };
+                        cm.setCursor(newCursorPosition);
+                    }else{
+                        stoFunc();
+                    }
+
+                }else {
+                    // If not 'sto', perform the default Tab behavior
+                    cm.execCommand('insertTab');
+                }
+            }
+        });
+
+        // 注释或反注释当前行
+        cm.addKeyMap({
+            'Ctrl-K': function(cm) {
+                let cursor = cm.getCursor();
+                let line = cm.getLine(cursor.line);
+                if (line.startsWith('--')) {
+                    cm.replaceRange(line.slice(2), { line: cursor.line, ch: 0 }, { line: cursor.line, ch: line.length });
+                } else {
+                    cm.replaceRange('--' + line, { line: cursor.line, ch: 0 }, { line: cursor.line, ch: line.length });
+                }
+            }
+        });
+        cm.getWrapperElement().addEventListener('click', (e) => handleCtrlClickToSelectRows(cm, e));
+
+        // // Ctrl + 鼠标单击选中当前行
+        // cm.on('mousedown', function(cm, event) {
+        //     if (event.ctrlKey && event.button === 0) {
+        //         let pos = cm.coordsChar({ left: event.clientX, top: event.clientY });
+        //         let line = pos.line;
+        //         cm.setSelection({ line: line, ch: 0 }, { line: line + 1, ch: 0 });
+        //     }
+        // });
+    }
+
+    //DBMS页面代码快捷键
+    function waitForCodeMirror() {
+        const observer = new MutationObserver(() => {
+            // 等待 CodeMirror 实例可用
+            // 查找所有 CodeMirror 实例
+            const editor= document.querySelector('.CodeMirror');
+            const cm =editor? editor.CodeMirror:null; // 获取 CodeMirror 实例
+            if (!cm) return;
+            cm.focus();
+            var contextInfo=getContextInfo(cm);
+            addTextToCodeMirror(cm);
+            enhanceCodeMirror(cm,contextInfo);
+            // 停止观察
+            observer.disconnect();
+        });
+
+        // 开始观察整个文档
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+
+    //#endregion ---------------------DBMS相关操作
+
     //自动加载订单工具参数并查询
     function autoSearchOrderTool(){
         console.log('autoSearchOrderTool start...');
@@ -320,7 +499,6 @@
         }
         return {maybeCoId,maybeSoId};
     }
-
     function buildContextLi(desc,text,onClick){
         let li = document.createElement('li');
         li.id='_nav_ordertool';
@@ -393,6 +571,9 @@
         enableJumptoProxyPage();
     }else if(isPorxyCompanyPage()){
         navToProxyCompany();
+    }else if(isDBMSQueryPage()){
+        waitForCodeMirror();
+        // enableCodeSnippits();
     }
 
 })();
