@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      0.5
+// @version      0.41
 // @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
@@ -22,9 +22,6 @@
 3. 订单列表页会显示小圆圈，如果查询结果小于等于3则点击圆圈会显示列表上所有的行的json数据, 否则点击圆圈只会显示选中的数据记录。
 4. 工单页面，选中文字会自动识别，如果识别的是纯数字，会在选中文字的左上角显示两个按钮：代理登录（选中的数字）（点击会自动代理登录该公司），SoId订单报文（选中的数字）；
     如果识别的不是数字且长度小于32则会提示SoId订单报文（选中的文本），点击会跳转到订单报文页面并查询当前选中文本的日志。
-
-//修改日志
-2025-7-3 17:00:35 支持新版代理，默认选择第一个授权的用户进行代理。
 **/
 (function() {
     'use strict';
@@ -222,9 +219,37 @@
             saveLogButton.addEventListener('click', () => {
                 window.open(`https://w.erp321.com/admin/internal/ops/OrderAnalysisOps.aspx?fromBrowersExt=1&_ext_shopid=${data.shop_id}&_ext_soid=${data.so_id}&_ext_start=&_ext_end=`);
             });
+
+            //创建跳转到商品明细
+            const orderItemLink = createLink('商品明细','20px');
+            orderItemLink.addEventListener('click', () => {
+                jumpTo($("li .json-toggle:contains('items')").first());
+            });
+            //创建跳转到orderaction
             // 将按钮添加到底部固定栏
+            bottomBar.appendChild(orderItemLink);
             bottomBar.appendChild(saveLogButton);
         }
+    }
+
+    function createLink(text,left){
+        const orderItemLink = document.createElement('a');
+        orderItemLink.textContent = text || '-';
+        orderItemLink.href="javascript:void(0)";
+        orderItemLink.style.position = 'absolute';
+        orderItemLink.style.left = left || '20px'; // 调整按钮位置
+        orderItemLink.style.top = '50%';
+        orderItemLink.style.transform = 'translateY(-50%)';
+        return orderItemLink;
+    }
+
+    function jumpTo($target){
+        const $container = $('.json-document');
+        // const $target = $("li .json-toggle:contains('items')").first();
+        $container.animate({
+            scrollTop: $target.offset().top - $container.offset().top + $container.scrollTop()
+        }, 400);
+
     }
 
     function getJsonData(){
