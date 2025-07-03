@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      0.41
+// @version      0.45
 // @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
@@ -129,6 +129,7 @@
         title.style.paddingLeft = '8px';
         title.style.backgroundColor = '#f0f0f0';
         title.style.cursor = 'move';
+
         editBox.appendChild(title);
 
         const content = document.createElement('div');
@@ -205,16 +206,27 @@
         bottomBar.style.bottom = '0';
         bottomBar.style.left = '0';
         bottomBar.style.width = '100%';
-        bottomBar.style.height = '32px';
+        bottomBar.style.height = '62px';
         bottomBar.style.backgroundColor = '#f0f0f0'; // 设置背景色，可自定义
         editBox.appendChild(bottomBar);
         if(isOrderDetailPage()){
+            $('<style>')
+                .prop('type', 'text/css')
+                .html(`
+                      .highlight-flash {
+                        background-color: yellow !important;
+                        transition: background-color 0.5s ease;
+                      }
+                    `)
+               .appendTo('head');
+
+
             // 创建按钮
             const saveLogButton = document.createElement('button');
             saveLogButton.textContent = '订单保存日志';
             saveLogButton.style.position = 'absolute';
             saveLogButton.style.right = '20px'; // 调整按钮位置
-            saveLogButton.style.top = '50%';
+            saveLogButton.style.top = '75%';
             saveLogButton.style.transform = 'translateY(-50%)';
             saveLogButton.addEventListener('click', () => {
                 window.open(`https://w.erp321.com/admin/internal/ops/OrderAnalysisOps.aspx?fromBrowersExt=1&_ext_shopid=${data.shop_id}&_ext_soid=${data.so_id}&_ext_start=&_ext_end=`);
@@ -225,10 +237,26 @@
             orderItemLink.addEventListener('click', () => {
                 jumpTo($("li .json-toggle:contains('items')").first());
             });
+            const bottomBtnContainer = document.createElement('div');
+            bottomBtnContainer.style.marginLeft = '20px'; // 调整按钮位置
+            const summary = document.createElement('p');
+            var fields=[{text:"CoId",field:"co_id"},
+                        {text:"OwnerCoId",field:"owner_co_id"},
+                        {text:"WmsCoId",field:"wms_co_id"},
+                        {text:"DrpCoId",field:"drp_co_id"},
+                        {text:"DrpCoIdFrom",field:"drp_co_id_from"},
+                        {text:"DrpCoIdTo",field:"drp_co_id_to"}
+                       ];
+            summary.textContent = fields.map(p=>(_OrderData[p.field] ?`${p.text}:${_OrderData[p.field]}`:null)).filter(p=>p).join();
+
+
             //创建跳转到orderaction
             // 将按钮添加到底部固定栏
-            bottomBar.appendChild(orderItemLink);
-            bottomBar.appendChild(saveLogButton);
+
+            bottomBtnContainer.appendChild(orderItemLink);
+            bottomBtnContainer.appendChild(saveLogButton);
+            bottomBar.appendChild(bottomBtnContainer);
+            bottomBar.appendChild(summary);
         }
     }
 
@@ -238,7 +266,7 @@
         orderItemLink.href="javascript:void(0)";
         orderItemLink.style.position = 'absolute';
         orderItemLink.style.left = left || '20px'; // 调整按钮位置
-        orderItemLink.style.top = '50%';
+        orderItemLink.style.top = '75%';
         orderItemLink.style.transform = 'translateY(-50%)';
         return orderItemLink;
     }
@@ -249,7 +277,13 @@
         $container.animate({
             scrollTop: $target.offset().top - $container.offset().top + $container.scrollTop()
         }, 400);
+        // 添加高亮样式
+        $target.addClass('highlight-flash');
 
+        // 移除高亮（可选：1.5秒后自动移除）
+        setTimeout(() => {
+            $target.removeClass('highlight-flash');
+        }, 1500);
     }
 
     function getJsonData(){
