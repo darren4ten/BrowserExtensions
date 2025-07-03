@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.5
 // @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
@@ -22,6 +22,9 @@
 3. 订单列表页会显示小圆圈，如果查询结果小于等于3则点击圆圈会显示列表上所有的行的json数据, 否则点击圆圈只会显示选中的数据记录。
 4. 工单页面，选中文字会自动识别，如果识别的是纯数字，会在选中文字的左上角显示两个按钮：代理登录（选中的数字）（点击会自动代理登录该公司），SoId订单报文（选中的数字）；
     如果识别的不是数字且长度小于32则会提示SoId订单报文（选中的文本），点击会跳转到订单报文页面并查询当前选中文本的日志。
+
+//修改日志
+2025-7-3 17:00:35 支持新版代理，默认选择第一个授权的用户进行代理。
 **/
 (function() {
     'use strict';
@@ -522,13 +525,52 @@
         if($('.error-title').length>0){
             return;
         }
-        _CallPage("AdminLogin", null, parseInt(coId), null);
-        setTimeout(()=>{
-            if($('#msg_body').is(':visible')){
-                return;
+        _ACP("CheckDisabledProxyCoids", function (rv) {
+            if (rv) {
+                // _UserPickerProxyLogin2({
+                //     close: function (creator) {},
+                //     check_type: "radio",
+                //     roles: [],
+                //     co_id: coId,
+                //     dtype: ''
+                // });
+                // var loginBtns = $('._dialog_frame .owner:contains("【授权登录】")');
+                // if(loginBtns.length<1){
+                //     $.msg("商家没有开启授权代理");
+                //     return;
+                // }else{
+                //     loginBtns.get(0).click();
+                // }
+
+                _ACU("/app/user/UserCombineProxyLogin.aspx", "LoadUserForProxyLogin", function (users) {
+                    if (users) {
+                        users = $.parseJSON(users);
+                        if(!users.items || users.items.length<1){
+                            $.msg("商家没有开启授权代理");
+                            return;
+                        }
+
+                        var dailitype='';
+                        var pw='';
+                        var authUser=users.items.find(p=>p.authed);
+                        if(!authUser){
+                            $.msg("商家没有开启授权代理");
+                            return;
+                        }
+                        _CallPage("BuErpWebProxyLogin", pw, coId, authUser.u_id, dailitype);
+                        setTimeout(()=>{
+                            if($('#msg_body').is(':visible')){
+                                return;
+                            }
+                            window.close();
+                        },600);
+                    }
+                }, '', coId);
             }
-            window.close();
-        },600);
+        },coId);
+        return;
+        // _CallPage("AdminLogin", null, parseInt(coId), null);
+
     }
 
     function matchContextConditon(selectedText){
