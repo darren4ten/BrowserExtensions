@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      0.45
+// @version      0.50
 // @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
@@ -708,6 +708,41 @@
         });
     }
 
+    // 为动态弹窗中的公司ID添加代理按钮
+    function addProxyButtonToCompanyId(){
+        const observer = new MutationObserver(() => {
+            // 查找所有包含"公司号"的元素
+            const companyIdElements = document.querySelectorAll('.col-context');
+            companyIdElements.forEach((element) => {
+                // 检查是否是公司号所在的元素
+                const prevElement = element.previousElementSibling;
+                if(prevElement && prevElement.textContent.includes('公司号')){
+                    // 获取公司ID文本
+                    const companyIdText = element.textContent.trim();
+                    // 检查是否已经添加过代理按钮
+                    if(!element.querySelector('.jst-proxy-btn') && companyIdText && !isNaN(companyIdText)){
+                        // 创建代理按钮
+                        const proxyBtn = document.createElement('button');
+                        proxyBtn.className = 'jst-proxy-btn ivu-btn ivu-btn-primary ivu-btn-small';
+                        proxyBtn.textContent = '代理';
+                        proxyBtn.style.marginLeft = '10px';
+                        proxyBtn.addEventListener('click', () => {
+                            window.open('https://w.erp321.com/app/user/company/company.aspx?_c=jst-epaas&fromBrowersExt=1&_ext_coid=' + companyIdText);
+                        });
+                        element.appendChild(proxyBtn);
+                    }
+                }
+            });
+        });
+
+        // 监听DOM变化
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: false
+        });
+    }
+
 
 
     console.log('JST tool ...');
@@ -717,6 +752,7 @@
         autoSearchOrderTool();
     }else if(canEnableJumptoProxyCompany()){
         enableJumptoProxyPage();
+        addProxyButtonToCompanyId();
     }else if(isPorxyCompanyPage()){
         navToProxyCompany();
     }else if(isDBMSQueryPage()){
