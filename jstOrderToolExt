@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         JST订单分析助手(Gem)
 // @namespace    http://tampermonkey.net/
-// @version      0.50
+// @version      0.52
 // @description  在特定页面显示圆圈，点击显示编辑框。在工单页支持选中文本之后代理公司或者查询线上订单号对应的日志。
 // @match        *://*.jushuitan.com/epaas*
 // @match        *://*.jushuitan.com/*
@@ -21,9 +21,13 @@
 2. 订单详情页会显示小圆圈，点击圆圈会弹出悬浮窗折叠显示订单的_OrderData,并支持复制和跳转到订单保存日志页面
 3. 订单列表页会显示小圆圈，如果查询结果小于等于3则点击圆圈会显示列表上所有的行的json数据, 否则点击圆圈只会显示选中的数据记录。
 4. 工单页面，选中文字会自动识别，如果识别的是纯数字，会在选中文字的左上角显示两个按钮：代理登录（选中的数字）（点击会自动代理登录该公司），SoId订单报文（选中的数字）；
-    如果识别的不是数字且长度小于32则会提示SoId订单报文（选中的文本），点击会跳转到订单报文页面并查询当前选中文本的日志。
+     如果识别的不是数字且长度小于32则会提示SoId订单报文（选中的文本），点击会跳转到订单报文页面并查询当前选中文本的日志。
+5. 工单详情弹窗中公司号旁自动添加"代理"按钮，点击可一键代理登录该公司。
+     修复：点击代理按钮不再导致弹窗关闭；切换工单后代理按钮始终对应当前打开的公司。
+     0.52：改为在 document 捕获阶段拦截代理按钮事件，抢在框架(Vue/iView)注册的捕获监听器之前阻断，
+           彻底解决点击代理后工单详情被关闭、工单列表被刷新导致进度丢失的问题；按钮显式设为 type=button 防止误触发表单提交。
 **/
-(function() {
+(function () {
     'use strict';
 
     // 判断当前页面类型
@@ -35,23 +39,23 @@
         return window.location.href.indexOf('app/order/order/list.aspx') !== -1;
     }
 
-    function isOrderToolPage(){
+    function isOrderToolPage() {
         return window.location.href.indexOf('admin/internal/ops/OrderAnalysisOps.aspx') !== -1;
     }
 
-    function isTicketPage(){
+    function isTicketPage() {
         return window.location.href.indexOf('tool.jushuitan.com/ticket') !== -1;
     }
     //是搜索公司进行代理的页面
-    function isPorxyCompanyPage(){
+    function isPorxyCompanyPage() {
         return window.location.href.indexOf('app/user/company/company.aspx') !== -1;
     }
 
-    function isDBMSQueryPage(){
+    function isDBMSQueryPage() {
         return window.location.href.indexOf('DBEngine/Query?') !== -1;
     }
 
-    function canEnableJumptoProxyCompany(){
+    function canEnableJumptoProxyCompany() {
         return isTicketPage();
     }
 
@@ -71,7 +75,7 @@
         circle.style.color = '#ffbc00';
         circle.style.borderRadius = '50%';
         circle.style.backgroundColor = 'green';
-        circle.style.draggable="false";
+        circle.style.draggable = "false";
         circle.style.zIndex = 9999;
         circle.draggable = true;
         document.body.appendChild(circle);
@@ -183,19 +187,19 @@
             const dataToCopy = JSON.stringify(getJsonData(), null, 4); // 格式化JSON字符串
             navigator.clipboard.writeText(dataToCopy)
                 .then(() => {
-                alert('复制成功！');
-            })
+                    alert('复制成功！');
+                })
                 .catch(err => {
-                console.error('复制失败：', err);
-            });
+                    console.error('复制失败：', err);
+                });
         });
 
         // 显示美化后的数据
-        var data=getJsonData();
+        var data = getJsonData();
         if (data) {
             // content.textContent = JSON.stringify(_OrderData, null, 4);
             // console.log('--loadJsonViewer--');
-            loadJsonViewer(content,data);
+            loadJsonViewer(content, data);
         } else {
             content.textContent = '没有选中的数据';
         }
@@ -209,7 +213,7 @@
         bottomBar.style.height = '62px';
         bottomBar.style.backgroundColor = '#f0f0f0'; // 设置背景色，可自定义
         editBox.appendChild(bottomBar);
-        if(isOrderDetailPage()){
+        if (isOrderDetailPage()) {
             $('<style>')
                 .prop('type', 'text/css')
                 .html(`
@@ -218,7 +222,7 @@
                         transition: background-color 0.5s ease;
                       }
                     `)
-               .appendTo('head');
+                .appendTo('head');
 
 
             // 创建按钮
@@ -233,21 +237,21 @@
             });
 
             //创建跳转到商品明细
-            const orderItemLink = createLink('商品明细','20px');
+            const orderItemLink = createLink('商品明细', '20px');
             orderItemLink.addEventListener('click', () => {
                 jumpTo($("li .json-toggle:contains('items')").first());
             });
             const bottomBtnContainer = document.createElement('div');
             bottomBtnContainer.style.marginLeft = '20px'; // 调整按钮位置
             const summary = document.createElement('p');
-            var fields=[{text:"CoId",field:"co_id"},
-                        {text:"OwnerCoId",field:"owner_co_id"},
-                        {text:"WmsCoId",field:"wms_co_id"},
-                        {text:"DrpCoId",field:"drp_co_id"},
-                        {text:"DrpCoIdFrom",field:"drp_co_id_from"},
-                        {text:"DrpCoIdTo",field:"drp_co_id_to"}
-                       ];
-            summary.textContent = fields.map(p=>(_OrderData[p.field] ?`${p.text}:${_OrderData[p.field]}`:null)).filter(p=>p).join();
+            var fields = [{ text: "CoId", field: "co_id" },
+            { text: "OwnerCoId", field: "owner_co_id" },
+            { text: "WmsCoId", field: "wms_co_id" },
+            { text: "DrpCoId", field: "drp_co_id" },
+            { text: "DrpCoIdFrom", field: "drp_co_id_from" },
+            { text: "DrpCoIdTo", field: "drp_co_id_to" }
+            ];
+            summary.textContent = fields.map(p => (_OrderData[p.field] ? `${p.text}:${_OrderData[p.field]}` : null)).filter(p => p).join();
 
 
             //创建跳转到orderaction
@@ -260,10 +264,10 @@
         }
     }
 
-    function createLink(text,left){
+    function createLink(text, left) {
         const orderItemLink = document.createElement('a');
         orderItemLink.textContent = text || '-';
-        orderItemLink.href="javascript:void(0)";
+        orderItemLink.href = "javascript:void(0)";
         orderItemLink.style.position = 'absolute';
         orderItemLink.style.left = left || '20px'; // 调整按钮位置
         orderItemLink.style.top = '75%';
@@ -271,7 +275,7 @@
         return orderItemLink;
     }
 
-    function jumpTo($target){
+    function jumpTo($target) {
         const $container = $('.json-document');
         // const $target = $("li .json-toggle:contains('items')").first();
         $container.animate({
@@ -286,16 +290,16 @@
         }, 1500);
     }
 
-    function getJsonData(){
-        if(isOrderDetailPage()){
+    function getJsonData() {
+        if (isOrderDetailPage()) {
             return _OrderData;
-        }else if(isOrderListPage()){
-            var checkdedData= jTable.GetCheckedJRows().map(p=>p.Data);
-            if(checkdedData && checkdedData.length>0){
+        } else if (isOrderListPage()) {
+            var checkdedData = jTable.GetCheckedJRows().map(p => p.Data);
+            if (checkdedData && checkdedData.length > 0) {
                 return checkdedData;
             }
-            if(jTable.Rows.length<=3){
-                return jTable.Rows.map(p=>p.Data);
+            if (jTable.Rows.length <= 3) {
+                return jTable.Rows.map(p => p.Data);
             }
         }
         return null;
@@ -303,12 +307,12 @@
 
     //将jquery.json-viewer代码直接压缩在js中加载，防止网络太慢导致加载不及时
     //          https://abodelot.github.io/jquery.json-viewer/json-viewer/jquery.json-viewer
-    function preLoadJsonPrettyPlugin(){
+    function preLoadJsonPrettyPlugin() {
         //加载json格式化插件js
-        var scriptText=`(function($){function isCollapsable(arg){return arg instanceof Object&&Object.keys(arg).length>0}function isUrl(string){var protocols=['http','https','ftp','ftps'];for(var i=0;i<protocols.length;++i){if(string.startsWith(protocols[i]+'://')){return true}}return false}function htmlEscape(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&apos;').replace(/"/g,'&quot;')}function json2html(json,options){var html='';if(typeof json==='string'){json=htmlEscape(json);if(options.withLinks&&isUrl(json)){html+='<a href="'+json+'" class="json-string" target="_blank">'+json+'</a>'}else{json=json.replace(/&quot;/g,'\\&quot;');html+='<span class="json-string">"'+json+'"</span>'}}else if(typeof json==='number'||typeof json==='bigint'){html+='<span class="json-literal">'+json+'</span>'}else if(typeof json==='boolean'){html+='<span class="json-literal">'+json+'</span>'}else if(json===null){html+='<span class="json-literal">null</span>'}else if(json instanceof Array){if(json.length>0){html+='[<ol class="json-array">';for(var i=0;i<json.length;++i){html+='<li>';if(isCollapsable(json[i])){html+='<a href class="json-toggle"></a>'}html+=json2html(json[i],options);if(i<json.length-1){html+=','}html+='</li>'}html+='</ol>]'}else{html+='[]'}}else if(typeof json==='object'){if(options.bigNumbers&&(typeof json.toExponential==='function'||json.isLosslessNumber)){html+='<span class="json-literal">'+json.toString()+'</span>'}else{var keyCount=Object.keys(json).length;if(keyCount>0){html+='{<ul class="json-dict">';for(var key in json){if(Object.prototype.hasOwnProperty.call(json,key)){let jsonElement=json[key];key=htmlEscape(key);var keyRepr=options.withQuotes?'<span class="json-string">"'+key+'"</span>':key;html+='<li>';if(isCollapsable(jsonElement)){html+='<a href class="json-toggle">'+keyRepr+'</a>'}else{html+=keyRepr}html+=': '+json2html(jsonElement,options);if(--keyCount>0){html+=','}html+='</li>'}}html+='</ul>}'}else{html+='{}'}}}return html}$.fn.jsonViewer=function(json,options){options=Object.assign({},{collapsed:false,rootCollapsable:true,withQuotes:false,withLinks:true,bigNumbers:false},options);return this.each(function(){var html=json2html(json,options);if(options.rootCollapsable&&isCollapsable(json)){html='<a href class="json-toggle"></a>'+html}$(this).html(html);$(this).addClass('json-document');$(this).off('click');$(this).on('click','a.json-toggle',function(){var target=$(this).toggleClass('collapsed').siblings('ul.json-dict, ol.json-array');target.toggle();if(target.is(':visible')){target.siblings('.json-placeholder').remove()}else{var count=target.children('li').length;var placeholder=count+(count>1?' items':' item');target.after('<a href class="json-placeholder">'+placeholder+'</a>')}return false});$(this).on('click','a.json-placeholder',function(){$(this).siblings('a.json-toggle').click();return false});if(options.collapsed==true){$(this).find('a.json-toggle').click()}})}})(jQuery);`;
+        var scriptText = `(function($){function isCollapsable(arg){return arg instanceof Object&&Object.keys(arg).length>0}function isUrl(string){var protocols=['http','https','ftp','ftps'];for(var i=0;i<protocols.length;++i){if(string.startsWith(protocols[i]+'://')){return true}}return false}function htmlEscape(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&apos;').replace(/"/g,'&quot;')}function json2html(json,options){var html='';if(typeof json==='string'){json=htmlEscape(json);if(options.withLinks&&isUrl(json)){html+='<a href="'+json+'" class="json-string" target="_blank">'+json+'</a>'}else{json=json.replace(/&quot;/g,'\\&quot;');html+='<span class="json-string">"'+json+'"</span>'}}else if(typeof json==='number'||typeof json==='bigint'){html+='<span class="json-literal">'+json+'</span>'}else if(typeof json==='boolean'){html+='<span class="json-literal">'+json+'</span>'}else if(json===null){html+='<span class="json-literal">null</span>'}else if(json instanceof Array){if(json.length>0){html+='[<ol class="json-array">';for(var i=0;i<json.length;++i){html+='<li>';if(isCollapsable(json[i])){html+='<a href class="json-toggle"></a>'}html+=json2html(json[i],options);if(i<json.length-1){html+=','}html+='</li>'}html+='</ol>]'}else{html+='[]'}}else if(typeof json==='object'){if(options.bigNumbers&&(typeof json.toExponential==='function'||json.isLosslessNumber)){html+='<span class="json-literal">'+json.toString()+'</span>'}else{var keyCount=Object.keys(json).length;if(keyCount>0){html+='{<ul class="json-dict">';for(var key in json){if(Object.prototype.hasOwnProperty.call(json,key)){let jsonElement=json[key];key=htmlEscape(key);var keyRepr=options.withQuotes?'<span class="json-string">"'+key+'"</span>':key;html+='<li>';if(isCollapsable(jsonElement)){html+='<a href class="json-toggle">'+keyRepr+'</a>'}else{html+=keyRepr}html+=': '+json2html(jsonElement,options);if(--keyCount>0){html+=','}html+='</li>'}}html+='</ul>}'}else{html+='{}'}}}return html}$.fn.jsonViewer=function(json,options){options=Object.assign({},{collapsed:false,rootCollapsable:true,withQuotes:false,withLinks:true,bigNumbers:false},options);return this.each(function(){var html=json2html(json,options);if(options.rootCollapsable&&isCollapsable(json)){html='<a href class="json-toggle"></a>'+html}$(this).html(html);$(this).addClass('json-document');$(this).off('click');$(this).on('click','a.json-toggle',function(){var target=$(this).toggleClass('collapsed').siblings('ul.json-dict, ol.json-array');target.toggle();if(target.is(':visible')){target.siblings('.json-placeholder').remove()}else{var count=target.children('li').length;var placeholder=count+(count>1?' items':' item');target.after('<a href class="json-placeholder">'+placeholder+'</a>')}return false});$(this).on('click','a.json-placeholder',function(){$(this).siblings('a.json-toggle').click();return false});if(options.collapsed==true){$(this).find('a.json-toggle').click()}})}})(jQuery);`;
         // 注入自定义 JavaScript
         const script = document.createElement('script');
-        script.textContent =scriptText;
+        script.textContent = scriptText;
         (document.head || document.documentElement).appendChild(script);
 
         const style = document.createElement('style');
@@ -318,16 +322,16 @@
         // console.log('动态添加preLoadJsonPrettyPlugin');
     }
 
-    let isJsonViewerPluginLoaded=false;
-    function loadJsonViewer(container,dataObj){
-        if(!isJsonViewerPluginLoaded){
+    let isJsonViewerPluginLoaded = false;
+    function loadJsonViewer(container, dataObj) {
+        if (!isJsonViewerPluginLoaded) {
             preLoadJsonPrettyPlugin();
-            isJsonViewerPluginLoaded=true;
-            setTimeout(()=>{
-                $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
-            },100);
-        }else{
-            $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
+            isJsonViewerPluginLoaded = true;
+            setTimeout(() => {
+                $(container).jsonViewer(dataObj, { collapsed: true, rootCollapsable: false });
+            }, 100);
+        } else {
+            $(container).jsonViewer(dataObj, { collapsed: true, rootCollapsable: false });
         }
         return;
         var link = document.createElement('link');
@@ -341,8 +345,8 @@
         document.head.appendChild(script);
 
         // 等待CodeMirror加载完成
-        script.onload = function() {
-            $(container).jsonViewer(dataObj,{collapsed: true,rootCollapsable:false});
+        script.onload = function () {
+            $(container).jsonViewer(dataObj, { collapsed: true, rootCollapsable: false });
         };
     }
 
@@ -362,7 +366,7 @@
     //#region ---------------------DBMS相关操作
 
     function addTextToCodeMirror(cm) {
-        var tip=`--JST订单助手插件提示：
+        var tip = `--JST订单助手插件提示：
 --1.输入sto然后按Tab键将自动补充为：SELECT TOP(100) * from   ORDER BY 1 DESC，如果输入stoo则会补充当前公司id的条件;
 --2.Ctrl+K：注释或者反注释当前鼠标所在行
 --3.Ctrl+鼠标单击：选中鼠标所在行
@@ -370,7 +374,7 @@
         // 获取当前光标位置
         const cursor = cm.getCursor();
         const firstLine = cm.getLine(0);
-        if(firstLine && firstLine.indexOf('JST订单助手')>-1){
+        if (firstLine && firstLine.indexOf('JST订单助手') > -1) {
             return;
         }
         // 在编辑框的开头插入文本
@@ -379,7 +383,7 @@
         cm.setCursor({ line: cursor.line, ch: cursor.ch + tip.length });
     }
 
-    function getContextInfo(cm){
+    function getContextInfo(cm) {
         // 获取 CodeMirror 的所有文本
         const content = cm.getValue();
         // 正则表达式匹配目标文本
@@ -389,12 +393,12 @@
         if (match) {
             const coId = match[1];
             let extId = match[2].slice(-2);
-            if(isNaN(coId) || isNaN(extId)){
+            if (isNaN(coId) || isNaN(extId)) {
                 return null;
             }
             console.log(`co_id: ${coId}, extId: ${extId}`);
-            extId=parseInt(extId);
-            return {coId,extId};
+            extId = parseInt(extId);
+            return { coId, extId };
         }
         return null;
     }
@@ -455,17 +459,17 @@
     }
 
     // 自定义功能实现
-    function enhanceCodeMirror(cm,context) {
+    function enhanceCodeMirror(cm, context) {
         // 自动补全功能
         cm.addKeyMap({
-            'Tab': function(cm) {
+            'Tab': function (cm) {
                 const cursor = cm.getCursor();
                 const line = cursor.line;
                 const ch = cursor.ch;
 
                 // Get the current line's text
                 const currentLineText = cm.getLine(line);
-                var stoFunc=()=>{
+                var stoFunc = () => {
                     cm.replaceRange('SELECT TOP(100) * FROM  ORDER BY 1 DESC;', { line, ch: 0 }, { line, ch: currentLineText.length });
                     const newCursorPosition = { line, ch: 'SELECT TOP(100) * FROM '.length };
                     cm.setCursor(newCursorPosition);
@@ -474,15 +478,15 @@
                 if (currentLineText.trim() === 'sto') {
                     stoFunc();
                 } else if (currentLineText.trim() === 'stoo') {
-                    if(context){
+                    if (context) {
                         cm.replaceRange(`SELECT TOP(100) * FROM _${context.extId} WHERE co_id=${context.coId}  ORDER BY 1 DESC;`, { line, ch: 0 }, { line, ch: currentLineText.length });
                         const newCursorPosition = { line, ch: 'SELECT TOP(100) * FROM '.length };
                         cm.setCursor(newCursorPosition);
-                    }else{
+                    } else {
                         stoFunc();
                     }
 
-                }else {
+                } else {
                     // If not 'sto', perform the default Tab behavior
                     cm.execCommand('insertTab');
                 }
@@ -491,7 +495,7 @@
 
         // 注释或反注释当前行
         cm.addKeyMap({
-            'Ctrl-K': function(cm) {
+            'Ctrl-K': function (cm) {
                 let cursor = cm.getCursor();
                 let line = cm.getLine(cursor.line);
                 if (line.startsWith('--')) {
@@ -533,7 +537,7 @@
     //         observer.observe(document.body, { childList: true, subtree: true });
     //     }
     function waitForCodeMirror() {
-        let checkCount=0;
+        let checkCount = 0;
         const checkCodeMirror = () => {
             checkCount++;
             const editor = document.querySelector('.CodeMirror');
@@ -545,7 +549,7 @@
                 enhanceCodeMirror(cm, contextInfo);
                 clearInterval(intervalId); // 找到 CodeMirror 实例后停止轮询
             }
-            if(checkCount>150){
+            if (checkCount > 150) {
                 clearInterval(intervalId); //如果超过次数也停止轮寻
             }
         };
@@ -555,33 +559,33 @@
     //#endregion ---------------------DBMS相关操作
 
     //自动加载订单工具参数并查询
-    function autoSearchOrderTool(){
+    function autoSearchOrderTool() {
         console.log('autoSearchOrderTool start...');
-        var fromBrowersExt=getParameterByName('fromBrowersExt');
-        if(!fromBrowersExt){
+        var fromBrowersExt = getParameterByName('fromBrowersExt');
+        if (!fromBrowersExt) {
             return;
         }
         console.log('autoSearchOrderTool executed...');
-        var soId=getParameterByName('_ext_soid');
-        var start=getParameterByName('_ext_start');
-        var end=getParameterByName('_ext_end');
-        var shopId=parseInt(getParameterByName('_ext_shopid'));
-        if(!isNaN(shopId)){
-            vm.$data.oQueryForm.iShopId=shopId;
+        var soId = getParameterByName('_ext_soid');
+        var start = getParameterByName('_ext_start');
+        var end = getParameterByName('_ext_end');
+        var shopId = parseInt(getParameterByName('_ext_shopid'));
+        if (!isNaN(shopId)) {
+            vm.$data.oQueryForm.iShopId = shopId;
         }
-        vm.$data.oQueryForm.sOrderId=soId;
+        vm.$data.oQueryForm.sOrderId = soId;
         vm.fnQuery();
     }
 
-    function navToProxyCompany(){
-        if(!getParameterByName("fromBrowersExt")){
+    function navToProxyCompany() {
+        if (!getParameterByName("fromBrowersExt")) {
             return;
         }
-        var coId=getParameterByName('_ext_coid');
-        if(isNaN(coId)){
+        var coId = getParameterByName('_ext_coid');
+        if (isNaN(coId)) {
             return;
         }
-        if($('.error-title').length>0){
+        if ($('.error-title').length > 0) {
             return;
         }
         _ACP("CheckDisabledProxyCoids", function (rv) {
@@ -604,64 +608,64 @@
                 _ACU("/app/user/UserCombineProxyLogin.aspx", "LoadUserForProxyLogin", function (users) {
                     if (users) {
                         users = $.parseJSON(users);
-                        if(!users.items || users.items.length<1){
+                        if (!users.items || users.items.length < 1) {
                             $.msg("商家没有开启授权代理");
                             return;
                         }
 
-                        var dailitype='';
-                        var pw='';
-                        var authUser=users.items.find(p=>p.authed);
-                        if(!authUser){
+                        var dailitype = '';
+                        var pw = '';
+                        var authUser = users.items.find(p => p.authed);
+                        if (!authUser) {
                             $.msg("商家没有开启授权代理");
                             return;
                         }
                         _CallPage("BuErpWebProxyLogin", pw, coId, authUser.u_id, dailitype);
-                        setTimeout(()=>{
-                            if($('#msg_body').is(':visible')){
+                        setTimeout(() => {
+                            if ($('#msg_body').is(':visible')) {
                                 return;
                             }
                             window.close();
-                        },600);
+                        }, 600);
                     }
                 }, '', coId);
             }
-        },coId);
+        }, coId);
         return;
         // _CallPage("AdminLogin", null, parseInt(coId), null);
 
     }
 
-    function matchContextConditon(selectedText){
-        var maybeCoId=false;
-        var maybeSoId=false;
-        if(selectedText.length>32 || selectedText.length<5){
-            return {maybeCoId,maybeSoId};
+    function matchContextConditon(selectedText) {
+        var maybeCoId = false;
+        var maybeSoId = false;
+        if (selectedText.length > 32 || selectedText.length < 5) {
+            return { maybeCoId, maybeSoId };
         }
-        if((isNaN(selectedText) || selectedText.length>11)&& selectedText.indexOf(' ')<=0 && selectedText.indexOf('\t')<=0){
-            maybeSoId=true;
+        if ((isNaN(selectedText) || selectedText.length > 11) && selectedText.indexOf(' ') <= 0 && selectedText.indexOf('\t') <= 0) {
+            maybeSoId = true;
         }
-        if(!isNaN(selectedText)){
-            maybeCoId=true;
-            maybeSoId=true;
+        if (!isNaN(selectedText)) {
+            maybeCoId = true;
+            maybeSoId = true;
         }
-        return {maybeCoId,maybeSoId};
+        return { maybeCoId, maybeSoId };
     }
-    function buildContextLi(desc,text,onClick){
+    function buildContextLi(desc, text, onClick) {
         let li = document.createElement('li');
-        li.id='_nav_ordertool';
-        let btn=document.createElement('button');
-        btn.innerHTML=`<span style=''>${desc}(</span><span style="color:green">${text}</span><span>)</span>`;
-        btn.addEventListener('click', function(event) {
-            onClick && onClick(text,event);
+        li.id = '_nav_ordertool';
+        let btn = document.createElement('button');
+        btn.innerHTML = `<span style=''>${desc}(</span><span style="color:green">${text}</span><span>)</span>`;
+        btn.addEventListener('click', function (event) {
+            onClick && onClick(text, event);
         });
         li.appendChild(btn);
         return li;
     }
-    function buildContextMenu(selectedText){
-        selectedText=selectedText.trim();
-        var conditon= matchContextConditon(selectedText);
-        if(!conditon.maybeCoId&& !conditon.maybeSoId){
+    function buildContextMenu(selectedText) {
+        selectedText = selectedText.trim();
+        var conditon = matchContextConditon(selectedText);
+        if (!conditon.maybeCoId && !conditon.maybeSoId) {
             return null;
         }
         var div = document.createElement('div');
@@ -670,14 +674,14 @@
         div.style.top = event.clientY - 60 + 'px';
         div.style.left = event.clientX - 180 + 'px';
         var ul = document.createElement('ul');
-        if(conditon.maybeCoId){
-            let li= buildContextLi('代理登录',selectedText,(txt)=>{
+        if (conditon.maybeCoId) {
+            let li = buildContextLi('代理登录', selectedText, (txt) => {
                 window.open('https://w.erp321.com/app/user/company/company.aspx?_c=jst-epaas&fromBrowersExt=1&_ext_coid=' + txt);
             });
             ul.appendChild(li);
         }
-        if(conditon.maybeSoId){
-            let li= buildContextLi('SoId订单报文',selectedText,(txt)=>{
+        if (conditon.maybeSoId) {
+            let li = buildContextLi('SoId订单报文', selectedText, (txt) => {
                 window.open(`https://w.erp321.com/admin/internal/ops/OrderAnalysisOps.aspx?fromBrowersExt=1&_ext_soid=${txt}&_ext_start=&_ext_end=`);
             });
             ul.appendChild(li);
@@ -686,21 +690,21 @@
         return div;
     }
 
-    function enableJumptoProxyPage(){
+    function enableJumptoProxyPage() {
         let div; // 用于存储创建的按钮
-        document.addEventListener('mouseup', function(event) {
+        document.addEventListener('mouseup', function (event) {
             const selectedText = window.getSelection().toString().trim();
-            if(!div){
-                div=buildContextMenu(selectedText);
-                if(div){
+            if (!div) {
+                div = buildContextMenu(selectedText);
+                if (div) {
                     document.body.appendChild(div);
                 }
-            }else{
-                var conditon= matchContextConditon(selectedText);
-                if(!conditon.maybeCoId&& !conditon.maybeSoId && div){
+            } else {
+                var conditon = matchContextConditon(selectedText);
+                if (!conditon.maybeCoId && !conditon.maybeSoId && div) {
                     document.body.removeChild(div);
-                    div=null;
-                }else{
+                    div = null;
+                } else {
                     div.style.top = event.clientY - 20 + 'px';
                     div.style.left = event.clientX + 10 + 'px';
                 }
@@ -708,37 +712,124 @@
         });
     }
 
+    // 从元素中提取纯公司ID文本（排除按钮自身的文本）
+    function extractCompanyId(element) {
+        let text = '';
+        element.childNodes.forEach(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+                text += node.textContent;
+            }
+        });
+        return text.trim();
+    }
+
+    // 在捕获阶段拦截代理按钮的相关事件，抢在框架(Vue/iView)注册在 document 上的
+    // 捕获阶段监听器之前把事件拦下，从根本上阻止框架的关闭/刷新逻辑被触发。
+    // 只需安装一次。
+    let isProxyInterceptorInstalled = false;
+    function installProxyClickInterceptor() {
+        if (isProxyInterceptorInstalled) {
+            return;
+        }
+        isProxyInterceptorInstalled = true;
+
+        const openProxyForBtn = (btn) => {
+            const currentCoId = btn.dataset.coId;
+            if (currentCoId && !isNaN(currentCoId)) {
+                window.open('https://w.erp321.com/app/user/company/company.aspx?_c=jst-epaas&fromBrowersExt=1&_ext_coid=' + currentCoId);
+            }
+        };
+
+        // 捕获阶段：拦截落在代理按钮上的所有指针/鼠标/点击事件
+        ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach((type) => {
+            document.addEventListener(type, (e) => {
+                const btn = e.target && e.target.closest ? e.target.closest('.jst-proxy-btn') : null;
+                if (!btn) {
+                    return;
+                }
+                // 阻断事件继续传播（含框架在 document/祖先上的捕获与冒泡监听器）
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                // 仅在 click 时执行真正的代理跳转，避免重复触发
+                if (type === 'click') {
+                    openProxyForBtn(btn);
+                }
+            }, true); // true = 捕获阶段，早于框架的祖先监听器
+        });
+    }
+
     // 为动态弹窗中的公司ID添加代理按钮
-    function addProxyButtonToCompanyId(){
-        const observer = new MutationObserver(() => {
+    function addProxyButtonToCompanyId() {
+        // 尽早安装全局捕获拦截器
+        installProxyClickInterceptor();
+
+        // 用于防抖，避免MutationObserver频繁触发
+        let debounceTimer = null;
+
+        const processCompanyElements = () => {
             // 查找所有包含"公司号"的元素
             const companyIdElements = document.querySelectorAll('.col-context');
             companyIdElements.forEach((element) => {
                 // 检查是否是公司号所在的元素
                 const prevElement = element.previousElementSibling;
-                if(prevElement && prevElement.textContent.includes('公司号')){
-                    // 获取公司ID文本
-                    const companyIdText = element.textContent.trim();
-                    // 检查是否已经添加过代理按钮
-                    if(!element.querySelector('.jst-proxy-btn') && companyIdText && !isNaN(companyIdText)){
+                if (prevElement && prevElement.textContent.includes('公司号')) {
+                    // 动态提取公司ID文本（排除按钮文本）
+                    const companyIdText = extractCompanyId(element);
+
+                    if (!companyIdText || isNaN(companyIdText)) {
+                        // 如果当前不是有效的公司ID，移除已有的代理按钮
+                        const existingBtn = element.querySelector('.jst-proxy-btn');
+                        if (existingBtn) {
+                            existingBtn.remove();
+                        }
+                        return;
+                    }
+
+                    const existingBtn = element.querySelector('.jst-proxy-btn');
+                    if (existingBtn) {
+                        // 按钮已存在，检查公司ID是否变化，若变化则更新
+                        if (existingBtn.dataset.coId !== companyIdText) {
+                            existingBtn.dataset.coId = companyIdText;
+                        }
+                    } else {
                         // 创建代理按钮
                         const proxyBtn = document.createElement('button');
+                        // 显式设置 type=button，避免默认的 submit 触发所在 form 提交/刷新
+                        proxyBtn.type = 'button';
                         proxyBtn.className = 'jst-proxy-btn ivu-btn ivu-btn-primary ivu-btn-small';
                         proxyBtn.textContent = '代理';
                         proxyBtn.style.marginLeft = '10px';
-                        proxyBtn.addEventListener('click', () => {
-                            window.open('https://w.erp321.com/app/user/company/company.aspx?_c=jst-epaas&fromBrowersExt=1&_ext_coid=' + companyIdText);
+                        proxyBtn.dataset.coId = companyIdText;
+
+                        // 真正的跳转与事件拦截由全局捕获拦截器 installProxyClickInterceptor 处理，
+                        // 这里再加一层冒泡阶段的兜底，双保险。
+                        proxyBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            e.stopImmediatePropagation();
+                            e.preventDefault();
                         });
+                        proxyBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+                        proxyBtn.addEventListener('mouseup', (e) => e.stopPropagation());
+
                         element.appendChild(proxyBtn);
                     }
                 }
             });
+        };
+
+        const observer = new MutationObserver(() => {
+            // 使用防抖避免频繁处理
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(processCompanyElements, 100);
         });
 
         // 监听DOM变化
         observer.observe(document.body, {
             childList: true,
             subtree: true,
+            characterData: true,  // 监听文本内容变化
             attributes: false
         });
     }
@@ -748,14 +839,14 @@
     console.log('JST tool ...');
     if (isOrderDetailPage() || isOrderListPage()) {
         createCircle();
-    }else if(isOrderToolPage()){
+    } else if (isOrderToolPage()) {
         autoSearchOrderTool();
-    }else if(canEnableJumptoProxyCompany()){
+    } else if (canEnableJumptoProxyCompany()) {
         enableJumptoProxyPage();
         addProxyButtonToCompanyId();
-    }else if(isPorxyCompanyPage()){
+    } else if (isPorxyCompanyPage()) {
         navToProxyCompany();
-    }else if(isDBMSQueryPage()){
+    } else if (isDBMSQueryPage()) {
         waitForCodeMirror();
         // enableCodeSnippits();
     }
